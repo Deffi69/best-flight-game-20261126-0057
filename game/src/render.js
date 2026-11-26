@@ -50,10 +50,62 @@ function hash(n) {
   return s - Math.floor(s);
 }
 
+// ---- Poster palettes ----
+// The bold sunset travel-poster direction: every sortie's sky is remapped to
+// deep indigo -> magenta -> burnt orange over a deep teal-navy sea, so the
+// whole game wears one high-contrast painted style. config.js keeps its
+// tuning; only the renderer reads colours, so the remap lives here and the
+// simulation never sees it.
+
+const POSTER = {
+  noon: {
+    skyTop: '#2b1160', skyMid: '#cf3674', skyLow: '#ff8438', sun: '#ffc44d',
+    sea: '#083b57', seaFar: '#8a4470', seaGlitter: 'rgba(255, 190, 90, 0.8)',
+    island: '#12a94e', islandSand: '#f4cf87', mountainFar: '#5b2a72', mountainNear: '#38155c',
+    cloud: '#472452', storm: '#1b1330', ring: '#ffb52e', ringInner: '#fff3c4',
+    hud: '#fff6e8', hudDim: '#e3b18c',
+  },
+  dawn: {
+    skyTop: '#341a6e', skyMid: '#d6406f', skyLow: '#ff8a3c', sun: '#ffd76a',
+    sea: '#0a4258', seaFar: '#9c4a72', seaGlitter: 'rgba(255, 200, 110, 0.8)',
+    island: '#15a34a', islandSand: '#f6d48e', mountainFar: '#6a3178', mountainNear: '#421b60',
+    cloud: '#472452', storm: '#1b1330', ring: '#ffb52e', ringInner: '#fff3c4',
+    hud: '#fff6e8', hudDim: '#e8ba96',
+  },
+  storm: {
+    skyTop: '#120e33', skyMid: '#31235c', skyLow: '#5c4470', sun: '#cfd6f5',
+    sea: '#0a2e47', seaFar: '#3c3468', seaGlitter: 'rgba(190, 200, 255, 0.45)',
+    island: '#0f8a42', islandSand: '#d9c08a', mountainFar: '#2a1c52', mountainNear: '#1a1138',
+    cloud: '#241a3e', storm: '#120c22', ring: '#ffd23e', ringInner: '#fff6c8',
+    hud: '#eef0ff', hudDim: '#a8a2c8',
+  },
+  sunset: {
+    skyTop: '#2a1160', skyMid: '#c22e6d', skyLow: '#ff7a26', sun: '#ffc44d',
+    sea: '#083b57', seaFar: '#8a4470', seaGlitter: 'rgba(255, 190, 90, 0.8)',
+    island: '#12a94e', islandSand: '#f4cf87', mountainFar: '#5b2a72', mountainNear: '#38155c',
+    cloud: '#472452', storm: '#1b1330', ring: '#ffe066', ringInner: '#fff8d0',
+    hud: '#fff6e8', hudDim: '#e3b18c',
+  },
+  dusk: {
+    skyTop: '#170b38', skyMid: '#7c2560', skyLow: '#e85d3d', sun: '#ffab52',
+    sea: '#07293f', seaFar: '#5e3260', seaGlitter: 'rgba(255, 170, 100, 0.55)',
+    island: '#0f9448', islandSand: '#e8c684', mountainFar: '#46205e', mountainNear: '#2a1244',
+    cloud: '#3c2244', storm: '#140c26', ring: '#ffe066', ringInner: '#fff8d0',
+    hud: '#f2ecff', hudDim: '#cfa08e',
+  },
+};
+
+/** The mission's palette, remapped to the poster direction. */
+function posterPalette(name) {
+  return { ...PALETTES[name], ...POSTER[name] };
+}
+
 // ---- Cloud sprites ----
-// One soft, shaded puff cluster is painted once per palette colour onto an
-// offscreen canvas (radial-gradient puffs, lit from above, shaded underneath),
-// then stamped with drawImage every frame: volumetric clouds at sprite cost.
+// One poster cloud is painted once per palette colour onto an offscreen
+// canvas, then stamped with drawImage every frame. It is built from flat
+// silhouette layers, not gradients: a dark plum belly pushed down, a
+// burnt-orange lit rim pushed up, and the solid body between them, so the
+// cloud reads as a graphic shape with a glowing top edge at any size.
 
 const spriteCache = new Map();
 
@@ -71,35 +123,22 @@ function cloudSprite(color, stormy) {
     [-0.98, 0.18, 0.78], [-0.5, -0.22, 0.95], [0.02, -0.46, 1.16], [0.55, -0.2, 0.96],
     [1.0, 0.2, 0.76], [0.08, 0.3, 0.92], [-0.52, 0.36, 0.74], [0.62, 0.38, 0.68],
   ];
-  const shadeCol = stormy ? '#141a26' : '#5d7292';
-  const litCol = stormy ? '#9aa7ba' : '#ffffff';
-  // Underside shade: the same cluster pushed down, in slate, so the belly reads heavy.
-  for (const [ox, oy, r] of puffs) {
-    const rad = r * unit;
-    const x = cx + ox * unit;
-    const y = cy + oy * unit + rad * 0.34;
-    const grad = g.createRadialGradient(x, y, rad * 0.1, x, y, rad * 1.02);
-    grad.addColorStop(0, mixc(color, shadeCol, 0.72, 0.62));
-    grad.addColorStop(1, mixc(color, shadeCol, 0.72, 0));
-    g.fillStyle = grad;
-    g.beginPath();
-    g.arc(x, y, rad * 1.02, 0, Math.PI * 2);
-    g.fill();
-  }
-  // Lit bodies: bright core high in each puff, fading out at the rim.
-  for (const [ox, oy, r] of puffs) {
-    const rad = r * unit;
-    const x = cx + ox * unit;
-    const y = cy + oy * unit;
-    const grad = g.createRadialGradient(x, y - rad * 0.38, rad * 0.08, x, y, rad * 1.04);
-    grad.addColorStop(0, mixc(color, litCol, stormy ? 0.34 : 0.6, 0.96));
-    grad.addColorStop(0.55, css(rgbOf(color), 0.92));
-    grad.addColorStop(1, css(rgbOf(color), 0));
-    g.fillStyle = grad;
-    g.beginPath();
-    g.arc(x, y, rad * 1.04, 0, Math.PI * 2);
-    g.fill();
-  }
+  const body = color;
+  const belly = mixc(color, '#0a0616', 0.5);
+  const lit = stormy ? '#8d7bb5' : '#ffa25e';
+  const paintCluster = (dy, col) => {
+    g.fillStyle = col;
+    for (const [ox, oy, r] of puffs) {
+      g.beginPath();
+      g.arc(cx + ox * unit, cy + oy * unit + dy, r * unit * 1.02, 0, Math.PI * 2);
+      g.fill();
+    }
+    // A flat base band knits the puffs into one silhouette with a level underside.
+    g.fillRect(cx - unit * 1.72, cy + unit * 0.26 + dy, unit * 3.44, unit * 0.52);
+  };
+  paintCluster(unit * 0.17, belly);
+  paintCluster(-unit * 0.14, lit);
+  paintCluster(0, body);
   spriteCache.set(key, c);
   return c;
 }
@@ -177,31 +216,37 @@ export function createRenderer(canvas) {
   function drawSky(state, terrain, pal, now) {
     ctx.fillStyle = skyGradient(pal);
     ctx.fillRect(0, 0, FIELD.width, FIELD.horizonY + 2);
-    // The sun: terrain.sunX is an offset from screen centre. Three glow layers,
-    // a bright core, and a thin horizontal flare so the light feels photographic.
+    // The sun: terrain.sunX is an offset from screen centre. For the poster
+    // direction it is drawn far larger and lower than the terrain's marker:
+    // a bold flat disc sitting just above the horizon, wrapped in glow, with
+    // a thin horizontal flare.
     const sunX = CX + terrain.sunX;
-    const sunY = terrain.sunY;
-    for (const [radius, alpha] of [[300, 0.16], [170, 0.28], [96, 0.5]]) {
+    const sunY = Math.min(terrain.sunY + 118, FIELD.horizonY - 72);
+    for (const [radius, alpha] of [[430, 0.16], [270, 0.26], [160, 0.42]]) {
       const sg = ctx.createRadialGradient(sunX, sunY, 6, sunX, sunY, radius);
       sg.addColorStop(0, fade(pal.sun, alpha));
       sg.addColorStop(1, fade(pal.sun, 0));
       ctx.fillStyle = sg;
       ctx.fillRect(sunX - radius, sunY - radius, radius * 2, radius * 2);
     }
-    const core = ctx.createRadialGradient(sunX - 8, sunY - 8, 4, sunX, sunY, 36);
+    ctx.fillStyle = pal.sun;
+    ctx.beginPath();
+    ctx.arc(sunX, sunY, 60, 0, Math.PI * 2);
+    ctx.fill();
+    const core = ctx.createRadialGradient(sunX - 10, sunY - 12, 4, sunX, sunY, 46);
     core.addColorStop(0, '#ffffff');
-    core.addColorStop(0.55, pal.sun);
-    core.addColorStop(1, mixc(pal.sun, pal.skyMid, 0.4));
+    core.addColorStop(0.5, mixc(pal.sun, '#ffffff', 0.45));
+    core.addColorStop(1, fade(pal.sun, 0));
     ctx.fillStyle = core;
     ctx.beginPath();
-    ctx.arc(sunX, sunY, 34, 0, Math.PI * 2);
+    ctx.arc(sunX, sunY, 46, 0, Math.PI * 2);
     ctx.fill();
-    const flare = ctx.createLinearGradient(sunX - 340, 0, sunX + 340, 0);
+    const flare = ctx.createLinearGradient(sunX - 420, 0, sunX + 420, 0);
     flare.addColorStop(0, fade(pal.sun, 0));
-    flare.addColorStop(0.5, fade(pal.sun, 0.20));
+    flare.addColorStop(0.5, fade(pal.sun, 0.22));
     flare.addColorStop(1, fade(pal.sun, 0));
     ctx.fillStyle = flare;
-    ctx.fillRect(sunX - 340, sunY - 2, 680, 4);
+    ctx.fillRect(sunX - 420, sunY - 2, 840, 4);
     // High cirrus streaks, drifting slowly, parallaxed a touch by the plane.
     ctx.fillStyle = mixc(pal.skyLow, '#ffffff', 0.5);
     for (let i = 0; i < 6; i += 1) {
@@ -229,15 +274,15 @@ export function createRenderer(canvas) {
       ctx.stroke();
     }
     // Mountain ridges on the horizon, parallaxed by the plane's lateral position.
-    // Each silhouette gets a vertical light gradient, a lit cap, a sunlit left
-    // facet and a shadowed right facet, so the range reads as rock, not paper.
+    // Poster treatment: flat dark-purple silhouettes, a deep shadow facet on
+    // the right slope, a bold orange facet on the left, and a hard rim light
+    // up the sunlit slope — no soft caps, no paper gradient.
     for (const ridge of terrain.ridges) {
       const shift = -state.plane.x * ridge.depth * 0.4;
       const base = ridge.depth < 0.4 ? pal.mountainFar : pal.mountainNear;
       const grad = ctx.createLinearGradient(0, FIELD.horizonY - 190, 0, FIELD.horizonY + 2);
-      grad.addColorStop(0, mixc(base, '#ffffff', 0.30));
-      grad.addColorStop(0.55, base);
-      grad.addColorStop(1, mixc(base, '#060a18', 0.28));
+      grad.addColorStop(0, base);
+      grad.addColorStop(1, mixc(base, '#0a0618', 0.4));
       ctx.fillStyle = grad;
       ctx.beginPath();
       ctx.moveTo(-20, FIELD.horizonY + 2);
@@ -253,36 +298,35 @@ export function createRenderer(canvas) {
         const apexY = FIELD.horizonY - peak.height * ridge.depth * 1.4;
         if (apexX < -60 || apexX > FIELD.width + 60) continue;
         // Shadow facet on the right slope.
-        ctx.fillStyle = 'rgba(8, 12, 30, 0.18)';
+        ctx.fillStyle = 'rgba(5, 2, 16, 0.35)';
         ctx.beginPath();
         ctx.moveTo(apexX, apexY);
         ctx.lineTo(peak.x + shift + peak.width, FIELD.horizonY + 2);
         ctx.lineTo(apexX + peak.width * 0.16, FIELD.horizonY + 2);
         ctx.closePath();
         ctx.fill();
-        // Sunlit facet on the left slope.
-        ctx.fillStyle = 'rgba(255, 244, 214, 0.10)';
+        // Sunlit facet on the left slope, in bold sunset orange.
+        ctx.fillStyle = 'rgba(255, 122, 38, 0.30)';
         ctx.beginPath();
         ctx.moveTo(peak.x + shift, FIELD.horizonY + 2);
         ctx.lineTo(apexX, apexY);
         ctx.lineTo(apexX - peak.width * 0.14, FIELD.horizonY + 2);
         ctx.closePath();
         ctx.fill();
-        // Lit cap near the summit.
-        const capDrop = Math.min(26, peak.height * ridge.depth * 0.32);
-        ctx.fillStyle = mixc(base, '#ffffff', 0.5, 0.85);
+        // The rim light itself: a hard orange line up the sunlit slope.
+        ctx.strokeStyle = 'rgba(255, 138, 60, 0.95)';
+        ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.moveTo(apexX, apexY);
-        ctx.lineTo(apexX + peak.width * 0.075, apexY + capDrop);
-        ctx.lineTo(apexX - peak.width * 0.075, apexY + capDrop);
-        ctx.closePath();
-        ctx.fill();
+        ctx.moveTo(peak.x + shift, FIELD.horizonY + 2);
+        ctx.lineTo(apexX, apexY);
+        ctx.stroke();
       }
     }
-    // Horizon haze melts the ridge bases into the sky.
+    // Horizon haze melts the ridge bases into the sky (kept thin, so the
+    // silhouettes stay bold).
     const haze = ctx.createLinearGradient(0, FIELD.horizonY - 52, 0, FIELD.horizonY + 2);
     haze.addColorStop(0, fade(pal.skyLow, 0));
-    haze.addColorStop(1, fade(pal.skyLow, 0.55));
+    haze.addColorStop(1, fade(pal.skyLow, 0.35));
     ctx.fillStyle = haze;
     ctx.fillRect(0, FIELD.horizonY - 52, FIELD.width, 54);
   }
@@ -304,7 +348,7 @@ export function createRenderer(canvas) {
     // The sun's reflection: a soft bright pool on the water under the sun.
     const sunX = CX + terrain.sunX;
     const pool = ctx.createRadialGradient(sunX, FIELD.horizonY + 60, 10, sunX, FIELD.horizonY + 60, 300);
-    pool.addColorStop(0, fade(pal.sun, 0.20));
+    pool.addColorStop(0, fade(pal.sun, 0.32));
     pool.addColorStop(1, fade(pal.sun, 0));
     ctx.fillStyle = pool;
     ctx.fillRect(sunX - 300, FIELD.horizonY, 600, FIELD.height - FIELD.horizonY);
@@ -315,14 +359,15 @@ export function createRenderer(canvas) {
       ctx.fillStyle = i % 2 ? 'rgba(255, 255, 255, 0.045)' : 'rgba(2, 12, 26, 0.06)';
       ctx.fillRect(0, y, FIELD.width, 5 + t * 15);
     }
-    // Sun glitter: a shimmering lane under the sun.
+    // Sun glitter: a bold shimmering lane under the sun, wide and bright
+    // enough to read as a poster light-path on the dark water.
     ctx.fillStyle = pal.seaGlitter;
     for (let i = 0; i < 14; i += 1) {
       const y = FIELD.horizonY + 14 + i * 26;
-      const w = 60 + i * 22 + Math.sin(now * 1.3 + i * 2.1) * 18;
+      const w = 70 + i * 26 + Math.sin(now * 1.3 + i * 2.1) * 18;
       const x = sunX + Math.sin(now * 0.7 + i) * 12 - w / 2;
-      ctx.globalAlpha = 0.35 - i * 0.018;
-      ctx.fillRect(x, y, w, 3);
+      ctx.globalAlpha = 0.55 - i * 0.028;
+      ctx.fillRect(x, y, w, 4);
     }
     ctx.globalAlpha = 1;
     // Sparkle field: hundreds of tiny twinkles, denser and longer near the viewer.
@@ -332,7 +377,7 @@ export function createRenderer(canvas) {
       const y = FIELD.horizonY + 5 + t * t * (FIELD.height - FIELD.horizonY - 12);
       const x = ((hash(i * 9.13) * 1460 + now * (5 + t * 22)) % 1420) - 70;
       const tw = 0.5 + 0.5 * Math.sin(now * (2 + t * 3.5) + i * 1.71);
-      ctx.globalAlpha = (0.04 + t * 0.15) * (0.35 + 0.65 * tw);
+      ctx.globalAlpha = (0.05 + t * 0.22) * (0.35 + 0.65 * tw);
       ctx.fillRect(x, y, 3 + t * 14, 1.6);
     }
     ctx.globalAlpha = 1;
@@ -366,6 +411,12 @@ export function createRenderer(canvas) {
       ctx.beginPath();
       ctx.ellipse(p.x, p.y, rx, ry, 0, 0, Math.PI * 2);
       ctx.fill();
+      // Poster outline: a thick dark line around the sand.
+      ctx.strokeStyle = '#5c4322';
+      ctx.lineWidth = Math.max(1.5, 3 * p.scale);
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y, rx, ry, 0, 0, Math.PI * 2);
+      ctx.stroke();
       // Foam at the waterline: one steady edge, one breathing ring.
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
       ctx.lineWidth = Math.max(1, 1.8 * p.scale);
@@ -392,6 +443,12 @@ export function createRenderer(canvas) {
       ctx.beginPath();
       ctx.ellipse(p.x, topY, moundRx, moundRy, 0, 0, Math.PI * 2);
       ctx.fill();
+      // Poster outline: a thick dark-green line around the mound.
+      ctx.strokeStyle = '#063d1e';
+      ctx.lineWidth = Math.max(2, 4 * p.scale);
+      ctx.beginPath();
+      ctx.ellipse(p.x, topY, moundRx, moundRy, 0, 0, Math.PI * 2);
+      ctx.stroke();
       ctx.save();
       ctx.beginPath();
       ctx.ellipse(p.x, topY, moundRx, moundRy, 0, 0, Math.PI * 2);
@@ -428,13 +485,14 @@ export function createRenderer(canvas) {
           const py = topY + Math.sin(a) * ry * 0.4;
           if (p.scale > 0.42 && rx > 30) {
             const h = 11 * p.scale;
-            ctx.strokeStyle = '#6b4a26';
-            ctx.lineWidth = Math.max(1, 1.6 * p.scale);
+            ctx.strokeStyle = '#4a2f16';
+            ctx.lineWidth = Math.max(1.4, 2.2 * p.scale);
             ctx.beginPath();
             ctx.moveTo(px, py);
             ctx.quadraticCurveTo(px + 2 * p.scale, py - h * 0.6, px + 4 * p.scale, py - h);
             ctx.stroke();
-            ctx.strokeStyle = '#1d6b32';
+            ctx.strokeStyle = '#0d5c28';
+            ctx.lineWidth = Math.max(1.2, 2 * p.scale);
             for (let f = 0; f < 5; f += 1) {
               const fa = -0.4 - f * 0.55;
               ctx.beginPath();
@@ -573,11 +631,18 @@ export function createRenderer(canvas) {
       ctx.beginPath();
       ctx.arc(p.x, p.y, r * 1.6, 0, Math.PI * 2);
       ctx.fill();
-      // Soft shadow pass, then the band itself with a lit gradient across it.
+      // Soft shadow pass, then a hard dark edge under the band so the ring
+      // reads as a bold poster shape, then the band itself with a lit
+      // gradient across it.
       ctx.lineWidth = Math.max(2, r * 0.14);
       ctx.strokeStyle = 'rgba(6, 20, 38, 0.20)';
       ctx.beginPath();
       ctx.arc(p.x + r * 0.05, p.y + r * 0.08, r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.lineWidth = Math.max(2, r * 0.14) + 5;
+      ctx.strokeStyle = ring.kind === 'fuel' ? '#0c3316' : '#331f00';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
       ctx.stroke();
       const band = ctx.createLinearGradient(p.x - r, p.y - r, p.x + r, p.y + r);
       band.addColorStop(0, mixc(ring.kind === 'fuel' ? '#3ddc78' : pal.ring, '#ffffff', 0.35));
@@ -653,8 +718,11 @@ export function createRenderer(canvas) {
       ctx.save();
       ctx.translate(p.x, p.y + bob);
       ctx.rotate(Math.sin(now + crate.z) * 0.15);
-      // A little wooden box with a lit top, a shaded side and strapped faces.
-      ctx.fillStyle = '#a86f24';
+      // A little wooden box with a lit top, a shaded side and strapped faces,
+      // every face edged in a thick dark outline for the poster style.
+      ctx.strokeStyle = '#4a2a08';
+      ctx.lineWidth = Math.max(1.5, r * 0.16);
+      ctx.fillStyle = '#8a5518';
       ctx.beginPath();
       ctx.moveTo(r, -r);
       ctx.lineTo(r * 1.28, -r * 0.62);
@@ -662,6 +730,7 @@ export function createRenderer(canvas) {
       ctx.lineTo(r, r);
       ctx.closePath();
       ctx.fill();
+      ctx.stroke();
       ctx.fillStyle = '#e0aa4e';
       ctx.beginPath();
       ctx.moveTo(-r, -r);
@@ -670,13 +739,14 @@ export function createRenderer(canvas) {
       ctx.lineTo(-r * 0.72, -r * 0.62);
       ctx.closePath();
       ctx.fill();
+      ctx.stroke();
       const face = ctx.createLinearGradient(0, -r, 0, r);
       face.addColorStop(0, '#d99b3a');
       face.addColorStop(1, '#b57a26');
       ctx.fillStyle = face;
       ctx.fillRect(-r, -r, r * 2, r * 2);
-      ctx.strokeStyle = '#7a4d12';
-      ctx.lineWidth = Math.max(1, r * 0.12);
+      ctx.strokeStyle = '#4a2a08';
+      ctx.lineWidth = Math.max(1.5, r * 0.18);
       ctx.strokeRect(-r, -r, r * 2, r * 2);
       ctx.beginPath();
       ctx.moveTo(-r, -r);
@@ -706,7 +776,7 @@ export function createRenderer(canvas) {
       // A lightning flash lights the cloud from inside before the bolt shows.
       if (flicker) {
         const fg = ctx.createRadialGradient(p.x, p.y, r * 0.1, p.x, p.y, r * 2.1);
-        fg.addColorStop(0, 'rgba(255, 240, 160, 0.4)');
+        fg.addColorStop(0, 'rgba(255, 240, 160, 0.55)');
         fg.addColorStop(1, 'rgba(255, 240, 160, 0)');
         ctx.fillStyle = fg;
         ctx.fillRect(p.x - r * 2.1, p.y - r * 2.1, r * 4.2, r * 4.2);
@@ -716,10 +786,11 @@ export function createRenderer(canvas) {
       ctx.globalAlpha = 0.94;
       ctx.drawImage(sprite, p.x - w / 2, p.y - h / 2, w, h);
       ctx.globalAlpha = 1;
-      // Rain slanting out of the near thunderheads.
+      // Rain slanting out of the near thunderheads: bolder streaks against
+      // the dark indigo storm sky.
       if (cloud.z < 950 && r > 12) {
-        ctx.strokeStyle = 'rgba(196, 220, 248, 0.30)';
-        ctx.lineWidth = Math.max(1, r * 0.03);
+        ctx.strokeStyle = 'rgba(196, 220, 248, 0.5)';
+        ctx.lineWidth = Math.max(1.4, r * 0.045);
         ctx.beginPath();
         for (let i = 0; i < 9; i += 1) {
           const rx = p.x + (hash(cloud.seed + i * 3.3) - 0.5) * r * 2.6;
@@ -730,14 +801,18 @@ export function createRenderer(canvas) {
         }
         ctx.stroke();
       }
-      // Lightning flickers inside the nearest thunderheads.
+      // Lightning flickers inside the nearest thunderheads: a wide glow
+      // pass under a bright core bolt.
       if (flicker) {
-        ctx.strokeStyle = '#ffe95e';
-        ctx.lineWidth = Math.max(2, r * 0.08);
         ctx.beginPath();
         ctx.moveTo(p.x, p.y);
         ctx.lineTo(p.x - r * 0.2, p.y + r * 0.7);
         ctx.lineTo(p.x + r * 0.1, p.y + r * 1.1);
+        ctx.strokeStyle = 'rgba(255, 233, 94, 0.35)';
+        ctx.lineWidth = Math.max(5, r * 0.22);
+        ctx.stroke();
+        ctx.strokeStyle = '#fff7ae';
+        ctx.lineWidth = Math.max(2.5, r * 0.1);
         ctx.stroke();
       }
     }
@@ -754,7 +829,7 @@ export function createRenderer(canvas) {
     const shakeY = state.shake > 0 ? (Math.random() - 0.5) * state.shake * 10 : 0;
     const cxp = px + shakeX;
     const cyp = py + shakeY;
-    const scale = 1 + plane.speed / 900;
+    const scale = (1 + plane.speed / 900) * 1.22;
     // Decorative particles, emitted in screen space at the tail and wingtips.
     const rot = bank * 0.9;
     const cos = Math.cos(rot);
@@ -787,11 +862,12 @@ export function createRenderer(canvas) {
     ctx.beginPath();
     ctx.ellipse(0, 150, shR, shR * 0.2, 0, 0, Math.PI * 2);
     ctx.fill();
-    // Main wings: a red gradient root-to-tip, a lit leading edge, aileron seams.
+    // Main wings: a saturated red gradient root-to-tip, a lit leading edge,
+    // aileron seams, and (below) one thick dark poster outline.
     const wingGrad = ctx.createLinearGradient(-128, 0, 128, 0);
-    wingGrad.addColorStop(0, '#b03028');
-    wingGrad.addColorStop(0.5, '#e05248');
-    wingGrad.addColorStop(1, '#b03028');
+    wingGrad.addColorStop(0, '#a8231c');
+    wingGrad.addColorStop(0.5, '#f0563f');
+    wingGrad.addColorStop(1, '#a8231c');
     ctx.fillStyle = wingGrad;
     ctx.beginPath();
     ctx.moveTo(-14, 6);
@@ -808,7 +884,7 @@ export function createRenderer(canvas) {
     ctx.closePath();
     ctx.fill();
     // Wing shading and tips.
-    ctx.fillStyle = '#a82e28';
+    ctx.fillStyle = '#9c241e';
     ctx.beginPath();
     ctx.moveTo(-128, 34);
     ctx.lineTo(-128, 46);
@@ -839,6 +915,21 @@ export function createRenderer(canvas) {
     ctx.moveTo(96, 27);
     ctx.lineTo(94, 40);
     ctx.stroke();
+    // Poster outline: one thick dark line around both wings.
+    ctx.strokeStyle = '#2b0f14';
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.moveTo(-14, 6);
+    ctx.lineTo(-128, 34);
+    ctx.lineTo(-128, 46);
+    ctx.lineTo(-10, 22);
+    ctx.closePath();
+    ctx.moveTo(14, 6);
+    ctx.lineTo(128, 34);
+    ctx.lineTo(128, 46);
+    ctx.lineTo(10, 22);
+    ctx.closePath();
+    ctx.stroke();
     // Tailplane and fin.
     ctx.fillStyle = '#c23a32';
     ctx.beginPath();
@@ -856,7 +947,7 @@ export function createRenderer(canvas) {
     ctx.closePath();
     ctx.fill();
     const finGrad = ctx.createLinearGradient(0, -60, 0, -28);
-    finGrad.addColorStop(0, '#e05248');
+    finGrad.addColorStop(0, '#f0563f');
     finGrad.addColorStop(1, '#c23a32');
     ctx.fillStyle = finGrad;
     ctx.beginPath();
@@ -868,6 +959,26 @@ export function createRenderer(canvas) {
     ctx.fill();
     ctx.fillStyle = '#fffaf0';
     ctx.fillRect(-6, -58, 12, 4);
+    // Poster outline around the tailplane and fin.
+    ctx.strokeStyle = '#2b0f14';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-8, -52);
+    ctx.lineTo(-52, -38);
+    ctx.lineTo(-52, -30);
+    ctx.lineTo(-6, -40);
+    ctx.closePath();
+    ctx.moveTo(8, -52);
+    ctx.lineTo(52, -38);
+    ctx.lineTo(52, -30);
+    ctx.lineTo(6, -40);
+    ctx.closePath();
+    ctx.moveTo(-6, -58);
+    ctx.lineTo(6, -58);
+    ctx.lineTo(10, -30);
+    ctx.lineTo(-10, -30);
+    ctx.closePath();
+    ctx.stroke();
     // Fuselage: a tapered body with a cream stripe and a glass canopy.
     const body = ctx.createLinearGradient(-16, 0, 16, 0);
     body.addColorStop(0, '#e2d5bc');
@@ -882,6 +993,10 @@ export function createRenderer(canvas) {
     ctx.quadraticCurveTo(-16, 34, -16, -8);
     ctx.quadraticCurveTo(-15, -50, 0, -72);
     ctx.fill();
+    // Poster outline around the fuselage.
+    ctx.strokeStyle = '#2b0f14';
+    ctx.lineWidth = 3.5;
+    ctx.stroke();
     // Belly shade and panel seams, so the body reads round, not cut out.
     ctx.save();
     ctx.beginPath();
@@ -919,8 +1034,8 @@ export function createRenderer(canvas) {
     ctx.beginPath();
     ctx.ellipse(0, -34, 9, 15, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(74, 52, 40, 0.45)';
-    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = '#1d2f42';
+    ctx.lineWidth = 2.2;
     ctx.stroke();
     ctx.fillStyle = 'rgba(255,255,255,0.75)';
     ctx.beginPath();
@@ -997,15 +1112,16 @@ export function createRenderer(canvas) {
   // ---- HUD ----
 
   function panel(x, y, w, h, pal) {
+    // Poster HUD: a deep indigo translucent fill behind a thick warm border.
     const g = ctx.createLinearGradient(0, y, 0, y + h);
-    g.addColorStop(0, 'rgba(18, 34, 54, 0.68)');
-    g.addColorStop(1, 'rgba(6, 12, 22, 0.62)');
+    g.addColorStop(0, 'rgba(20, 12, 40, 0.82)');
+    g.addColorStop(1, 'rgba(8, 5, 20, 0.80)');
     ctx.fillStyle = g;
     ctx.beginPath();
     ctx.roundRect(x, y, w, h, 8);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.22)';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(255, 214, 150, 0.9)';
+    ctx.lineWidth = 2.5;
     ctx.stroke();
     ctx.strokeStyle = 'rgba(255,255,255,0.10)';
     ctx.beginPath();
@@ -1079,8 +1195,8 @@ export function createRenderer(canvas) {
     ctx.lineTo(r, pitchPx);
     ctx.stroke();
     ctx.restore();
-    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(255, 214, 150, 0.9)';
+    ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.stroke();
@@ -1312,7 +1428,7 @@ export function createRenderer(canvas) {
 
   /** Paint one frame. `screen` is a SCREEN_* constant; `ui` carries best, messages, now, etc. */
   function draw(state, terrain, screen, ui) {
-    const pal = PALETTES[state.mission.palette];
+    const pal = posterPalette(state.mission.palette);
     const now = ui.now;
     ctx.clearRect(0, 0, FIELD.width, FIELD.height);
     drawSky(state, terrain, pal, now);
@@ -1331,7 +1447,7 @@ export function createRenderer(canvas) {
     // A soft vignette seats the scene in the frame.
     const vg = ctx.createRadialGradient(CX, FIELD.height * 0.46, FIELD.height * 0.42, CX, FIELD.height * 0.46, FIELD.height * 0.98);
     vg.addColorStop(0, 'rgba(8, 10, 26, 0)');
-    vg.addColorStop(1, 'rgba(8, 10, 26, 0.20)');
+    vg.addColorStop(1, 'rgba(8, 10, 26, 0.26)');
     ctx.fillStyle = vg;
     ctx.fillRect(0, 0, FIELD.width, FIELD.height);
     if (screen === SCREEN_PLAY || screen === SCREEN_PAUSED) drawHUD(state, ui, pal);
